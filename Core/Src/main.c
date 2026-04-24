@@ -24,7 +24,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include "lcd.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -45,7 +45,20 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
+static uint16_t line_buffer[240];
 
+lcd_io lcd_io_desc = {
+    .spi = &hspi1,
+    .rst = {LCD_RST_GPIO_Port,  LCD_RST_Pin,  0},
+    .bl  = {LCD_PWR_GPIO_Port,  LCD_PWR_Pin,  0},
+    .cs  = {LCD_CS_GPIO_Port,   LCD_CS_Pin,   0},
+    .dc  = {LCD_DC_GPIO_Port,   LCD_DC_Pin,   0},
+};
+
+lcd lcd_dev = {
+    .io = &lcd_io_desc,
+    .line_buffer = line_buffer,
+};
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -91,7 +104,9 @@ int main(void)
   MX_USART1_UART_Init();
   MX_SPI1_Init();
   /* USER CODE BEGIN 2 */
-
+  lcd_init_dev(&lcd_dev, LCD_1_14_INCH, LCD_ROTATE_90);
+  lcd_print(&lcd_dev, 0, 0, "> STM32L431CBT6");
+  lcd_print(&lcd_dev, 0, 20, "> LCD 1.14inch 240x135");
   /* USER CODE END 2 */
 
   /* Infinite loop */
