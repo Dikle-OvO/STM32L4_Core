@@ -26,6 +26,7 @@
 /* USER CODE BEGIN Includes */
 #include "lcd.h"
 #include "key.h"
+#include "menu.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -107,8 +108,7 @@ int main(void)
   /* USER CODE BEGIN 2 */
   key_init();
   lcd_init_dev(&lcd_dev, LCD_1_14_INCH, LCD_ROTATE_90);
-  lcd_print(&lcd_dev, 0, 0, "> STM32L431CBT6");
-  lcd_print(&lcd_dev, 0, 20, "> LCD 1.14inch 240x135");
+  menu_init(&lcd_dev);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -119,13 +119,7 @@ int main(void)
 
     /* USER CODE BEGIN 3 */
     key_event_t evt = key_read();
-    if (evt == KEY_EVENT_CLICK) {
-      HAL_GPIO_TogglePin(RED_GPIO_Port, RED_Pin);
-    } else if (evt == KEY_EVENT_DOUBLE_CLICK) {
-      HAL_GPIO_TogglePin(GREEN_GPIO_Port, GREEN_Pin);
-    } else if (evt == KEY_EVENT_LONG_PRESS) {
-      HAL_GPIO_TogglePin(BLUE_GPIO_Port, BLUE_Pin);
-    }
+    menu_process(evt);
   }
   /* USER CODE END 3 */
 }
