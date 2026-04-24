@@ -1,0 +1,41 @@
+# Build output
+build/
+
+# IDE
+.idea/
+.vscode/.browse.c_cpp.db*
+.vscode/ipch/
+*.code-workspace
+
+# CMake
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+
+# Object files
+*.o
+*.obj
+*.elf
+*.bin
+*.hex
+*.map
+*.lst
+
+# Libraries
+*.a
+*.lib
+
+# Dependency files
+*.d
+
+# Debug
+*.dSYM/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# STM32CubeIDE
+Debug/
+Release/
