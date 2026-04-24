@@ -288,6 +288,7 @@ void lcd_set_font(lcd* plcd, font_type type, uint16_t front_color, uint16_t back
 void lcd_show_char(lcd* plcd, uint16_t x, uint16_t y, uint16_t chr)
 {
     uint8_t width = 0;
+    uint16_t pos = 0;
     chr = chr - ' ';
 
     if(x > plcd->hw->width - plcd->font.width ||
@@ -295,15 +296,15 @@ void lcd_show_char(lcd* plcd, uint16_t x, uint16_t y, uint16_t chr)
         return;
     }
 
+    uint16_t fg = (plcd->font.front_color << 8) | (plcd->font.front_color >> 8);
+    uint16_t bg = (plcd->font.back_color  << 8) | (plcd->font.back_color  >> 8);
+
     lcd_set_address(plcd, x, y, x + plcd->font.width - 1, y + plcd->font.height - 1);
 
     for(int idx = 0; idx < plcd->font.bytes; idx++) {
         uint8_t data = plcd->font.addr[chr * plcd->font.bytes + idx];
         for(int pixel = 0; pixel < 8; pixel++) {
-            if(data & 0x01)
-                lcd_write_halfword(plcd->io, plcd->font.front_color);
-            else
-                lcd_write_halfword(plcd->io, plcd->font.back_color);
+            plcd->line_buffer[pos++] = (data & 0x01) ? fg : bg;
             data >>= 1;
 
             width++;
@@ -313,6 +314,8 @@ void lcd_show_char(lcd* plcd, uint16_t x, uint16_t y, uint16_t chr)
             }
         }
     }
+
+    lcd_write_bulk(plcd->io, (uint8_t *)plcd->line_buffer, pos * 2);
 }
 
 void lcd_show_string(lcd* plcd, uint16_t x, uint16_t y, const uint8_t *p)

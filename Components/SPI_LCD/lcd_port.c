@@ -14,6 +14,7 @@ static void lcd_io_ctrl(gpio_io* io, bool flag)
         HAL_GPIO_WritePin(io->port, io->pin, flag ^ io->invert);
 }
 
+/* 短数据阻塞发送 (寄存器命令 / 1~2 字节) */
 static void lcd_spi_transmit(void* spi, uint8_t* data, uint32_t len)
 {
     while(spi && len) {
@@ -24,6 +25,19 @@ static void lcd_spi_transmit(void* spi, uint8_t* data, uint32_t len)
             HAL_SPI_Transmit(spi, data, len, 0xffff);
             break;
         }
+    }
+}
+
+/* 大块数据 DMA 发送，自动等待完成 */
+static void lcd_spi_transmit_dma(void* spi, uint8_t* data, uint32_t len)
+{
+    if(!spi) return;
+    while(len) {
+        uint16_t chunk = (len > 0xffff) ? 0xffff : (uint16_t)len;
+        HAL_SPI_Transmit_DMA(spi, data, chunk);
+        while(HAL_SPI_GetState(spi) != HAL_SPI_STATE_READY) {}
+        data += chunk;
+        len  -= chunk;
     }
 }
 
@@ -66,7 +80,7 @@ void lcd_write_halfword(lcd_io* lcdio, uint16_t data)
 void lcd_write_bulk(lcd_io* lcdio, uint8_t* data, uint32_t len)
 {
     lcd_io_dc(lcdio, 1);
-    lcd_spi_transmit(lcdio->spi, (uint8_t *)data, len);
+    lcd_spi_transmit_dma(lcdio->spi, (uint8_t *)data, len);
 }
 
 void lcd_write_reg(lcd_io* lcdio, uint8_t data)

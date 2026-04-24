@@ -21,9 +21,11 @@ typedef enum {
     PAGE_SYSINFO,
     PAGE_LED,
     PAGE_ABOUT,
+    PAGE_TEST,
 } page_t;
 
-#define MAIN_ITEMS   3
+#define MAIN_ITEMS   4
+#define TEST_ITEMS   1
 #define LED_ITEMS    3
 
 /* ============ 极客配色 (绿色终端风格) ============ */
@@ -63,7 +65,7 @@ static void mline(uint16_t y, uint16_t fg, const char *fmt, ...)
 
 static void draw_main(void)
 {
-    static const char *items[] = {"System Info", "LED Control", "About"};
+    static const char *items[] = {"System Info", "LED Control", "About", "Test"};
 
     mline(0,   C_TITLE, "  <*> STM32L4 CORE <*>");
     mline(16,  C_BAR,   "==============================");
@@ -141,6 +143,51 @@ static void draw_about(void)
     mline(112, C_DIM,   " BACK: DClk / LongPress");
 }
 
+/* ---------- 全屏刷色测试 ---------- */
+static void run_fill_test(void)
+{
+    static const uint16_t colors[] = {RED, GREEN, BLUE, YELLOW, CYAN, MAGENTA, WHITE, BLACK};
+    uint32_t total_ms = 0;
+
+    for (int i = 0; i < 8; i++) {
+        uint32_t t0 = HAL_GetTick();
+        lcd_clear(dev, colors[i]);
+        total_ms += HAL_GetTick() - t0;
+    }
+
+    lcd_clear(dev, C_BG);
+    mline(0,   C_TITLE, "  <*> FILL RESULT <*>");
+    mline(16,  C_BAR,   "==============================");
+    mline(32,  C_TEXT,  " 8 colors fullscreen fill");
+    mline(48,  C_TEXT,  " Total : %lu ms", (unsigned long)total_ms);
+    mline(64,  C_TEXT,  " Avg   : %lu ms/frame", (unsigned long)(total_ms / 8));
+    mline(80,  C_TEXT,  " %lux%lu  @SPI/DMA",
+          (unsigned long)dev->hw->width,
+          (unsigned long)dev->hw->height);
+    mline(96,  C_BAR,   "==============================");
+    mline(112, C_DIM,   " Any key to return");
+}
+
+static void draw_test(void)
+{
+    static const char *items[] = {"Fill Screen"};
+
+    mline(0,   C_TITLE, "  <*> TEST <*>");
+    mline(16,  C_BAR,   "==============================");
+
+    for (int i = 0; i < TEST_ITEMS; i++) {
+        uint16_t fg = (i == cursor) ? C_SEL : C_TEXT;
+        char cur    = (i == cursor) ? '>' : ' ';
+        mline(32 + i * 16, fg, "  %c %s", cur, items[i]);
+    }
+
+    mline(48,  C_BG,  "");
+    mline(64,  C_BG,  "");
+    mline(80,  C_BG,  "");
+    mline(96,  C_BAR, "==============================");
+    mline(112, C_DIM, " Clk:Nav DClk:Run Long:Back");
+}
+
 /* ====================================================== */
 /*                     统一刷新                            */
 /* ====================================================== */
@@ -152,6 +199,7 @@ static void draw_page(void)
     case PAGE_SYSINFO: draw_sysinfo(); break;
     case PAGE_LED:     draw_led();     break;
     case PAGE_ABOUT:   draw_about();   break;
+    case PAGE_TEST:    draw_test();    break;
     }
 }
 
@@ -167,7 +215,7 @@ void menu_init(lcd *plcd)
     draw_page();
 }
 
-static const page_t main_targets[] = {PAGE_SYSINFO, PAGE_LED, PAGE_ABOUT};
+static const page_t main_targets[] = {PAGE_SYSINFO, PAGE_LED, PAGE_ABOUT, PAGE_TEST};
 
 void menu_process(key_event_t evt)
 {
@@ -189,6 +237,19 @@ void menu_process(key_event_t evt)
     case PAGE_SYSINFO:
     case PAGE_ABOUT:
         if (evt == KEY_EVENT_DOUBLE_CLICK || evt == KEY_EVENT_LONG_PRESS) {
+            page   = PAGE_MAIN;
+            cursor = 0;
+        }
+        break;
+
+    /* ---- 测试: 单击切换项, 双击执行, 长按返回 ---- */
+    case PAGE_TEST:
+        if (evt == KEY_EVENT_CLICK) {
+            cursor = (cursor + 1) % TEST_ITEMS;
+        } else if (evt == KEY_EVENT_DOUBLE_CLICK) {
+            if (cursor == 0) run_fill_test();
+            return;  /* 结果页面已绘制，等待任意键 */
+        } else if (evt == KEY_EVENT_LONG_PRESS) {
             page   = PAGE_MAIN;
             cursor = 0;
         }
