@@ -63,7 +63,7 @@ void MX_GPIO_Init(void)
 
   /*Configure GPIO pin : KEY_Pin */
   GPIO_InitStruct.Pin = KEY_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(KEY_GPIO_Port, &GPIO_InitStruct);
 
@@ -110,6 +110,10 @@ void MX_GPIO_Init(void)
   GPIO_InitStruct.Mode = GPIO_MODE_ANALOG;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOH, &GPIO_InitStruct);
+
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 1, 0);
+  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 
 }
 
