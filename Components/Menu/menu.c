@@ -76,7 +76,6 @@ static void draw_main(void)
         mline(32 + i * 16, fg, "  %c %s", cur, items[i]);
     }
 
-    mline(80,  C_BG,  "");
     mline(96,  C_BAR, "==============================");
     mline(112, C_DIM, " Clk:Nav DClk:OK Long:Back");
 }
@@ -149,10 +148,19 @@ static void run_fill_test(void)
     static const uint16_t colors[] = {RED, GREEN, BLUE, YELLOW, CYAN, MAGENTA, WHITE, BLACK};
     uint32_t total_ms = 0;
 
+    /* 先刷一帧同步相位：连续两帧对齐到相同的 VSYNC 相位 */
+    lcd_clear(dev, BLACK);
+    HAL_Delay(17);  /* 等待一个完整 VSYNC 周期 (16.7ms) */
+
     for (int i = 0; i < 8; i++) {
         uint32_t t0 = HAL_GetTick();
         lcd_clear(dev, colors[i]);
-        total_ms += HAL_GetTick() - t0;
+        uint32_t dt = HAL_GetTick() - t0;
+        total_ms += dt;
+        /* 等够一个 VSYNC 周期，保持与面板刷新同相 */
+        if (dt < 17) HAL_Delay(17 - dt);
+        /* 再额外停留让颜色能看清 */
+        HAL_Delay(283);
     }
 
     lcd_clear(dev, C_BG);

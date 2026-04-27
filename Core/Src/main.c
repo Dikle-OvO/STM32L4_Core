@@ -48,7 +48,7 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-static uint16_t line_buffer[512];
+static uint16_t line_buffer[2400];
 
 lcd_io lcd_io_desc = {
     .spi = &hspi1,

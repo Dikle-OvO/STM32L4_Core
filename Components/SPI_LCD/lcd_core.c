@@ -214,12 +214,23 @@ void lcd_fill(lcd* plcd, uint16_t x1, uint16_t y1, uint16_t x2, uint16_t y2, uin
             }
         }
     } else {
-        for(int i = 0; i < width; i++)
+        /* 计算 buffer 能容纳的行数 (buffer 大小按 2400 uint16 计) */
+        uint16_t buf_lines = 2400 / width;
+        if (buf_lines == 0) buf_lines = 1;
+        if (buf_lines > height) buf_lines = height;
+
+        uint32_t fill_count = (uint32_t)width * buf_lines;
+        for(uint32_t i = 0; i < fill_count; i++)
             plcd->line_buffer[i] = color;
 
         lcd_set_address(plcd, x1, y1, x2, y2);
-        for(int i = 0; i < height; i++)
-            lcd_write_bulk(plcd->io, (uint8_t *)&plcd->line_buffer[0], width * 2);
+
+        uint16_t rows_left = height;
+        while (rows_left > 0) {
+            uint16_t chunk = (rows_left >= buf_lines) ? buf_lines : rows_left;
+            lcd_write_bulk(plcd->io, (uint8_t *)plcd->line_buffer, (uint32_t)width * chunk * 2);
+            rows_left -= chunk;
+        }
     }
 }
 
