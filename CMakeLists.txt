@@ -50,6 +50,9 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Components/SPI_LCD/lcd_font.c
     Components/KEY/key.c
     Components/Menu/menu.c
+    Components/OTA/flash_port.c
+    Components/OTA/bl_meta.c
+    Components/OTA/ota_core.c
 )
 
 # Add include paths
@@ -58,6 +61,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     Components/SPI_LCD
     Components/KEY
     Components/Menu
+    Components/OTA
 )
 
 # Add project symbols (macros)
