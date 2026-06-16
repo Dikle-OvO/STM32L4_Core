@@ -1,0 +1,19 @@
+# ninja log v5
+39	180	8033302940739760	CMakeFiles/STM32L431_BL.dir/F_/Project/ST/STM32L4_Core/startup_stm32l431xx.s.obj	57090d04c202a887
+47	492	8033302943848365	CMakeFiles/STM32L431_BL.dir/F_/Project/ST/STM32L4_Core/Core/Src/system_stm32l4xx.c.obj	46beba2c20b1d14e
+64	522	8033302944119066	CMakeFiles/STM32L431_BL.dir/F_/Project/ST/STM32L4_Core/Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_cortex.c.obj	6371b149e4392c3f
+13	525	8033302944163507	CMakeFiles/STM32L431_BL.dir/Src/bl_main.c.obj	ee7ce238cf369d44
+55	532	8033302944263751	CMakeFiles/STM32L431_BL.dir/F_/Project/ST/STM32L4_Core/Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal.c.obj	6a4f3784f373fd78
+92	558	8033302944584630	CMakeFiles/STM32L431_BL.dir/F_/Project/ST/STM32L4_Core/Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_flash.c.obj	cfb20373787f208c
+132	568	8033302944649752	CMakeFiles/STM32L431_BL.dir/F_/Project/ST/STM32L4_Core/Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_pwr.c.obj	71b739a7b00578b
+108	574	8033302944740005	CMakeFiles/STM32L431_BL.dir/F_/Project/ST/STM32L4_Core/Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_gpio.c.obj	ec9096826ad2d892
+101	588	8033302944865296	CMakeFiles/STM32L431_BL.dir/F_/Project/ST/STM32L4_Core/Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_flash_ex.c.obj	9030e53269d9c445
+73	632	8033302945331321	CMakeFiles/STM32L431_BL.dir/F_/Project/ST/STM32L4_Core/Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_rcc.c.obj	32579022148cf9a3
+180	632	8033302945311347	CMakeFiles/STM32L431_BL.dir/F_/Project/ST/STM32L4_Core/Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_pwr_ex.c.obj	6923314b1038ddc6
+82	634	8033302945321351	CMakeFiles/STM32L431_BL.dir/F_/Project/ST/STM32L4_Core/Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_rcc_ex.c.obj	9bcfef53ab04f8c
+32	657	8033302945611605	CMakeFiles/STM32L431_BL.dir/F_/Project/ST/STM32L4_Core/Components/OTA/flash_port.c.obj	7b5ce5c5b435f3d1
+5	257	8033308577409077	CMakeFiles/STM32L431_BL.dir/Src/bl_core.c.obj	74636fa5ead26f5f
+13	258	8033308577409077	CMakeFiles/STM32L431_BL.dir/Src/bl_meta.c.obj	864588df8f0d7280
+18	263	8033308577519696	CMakeFiles/STM32L431_BL.dir/F_/Project/ST/STM32L4_Core/Components/OTA/flash_port.c.obj	7b5ce5c5b435f3d1
+16	166	8033309928228522	CMakeFiles/STM32L431_BL.dir/Src/bl_main.c.obj	ee7ce238cf369d44
+167	648	8033309929610904	STM32L431_BL.elf	ef40722fbc781d2b
