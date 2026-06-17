@@ -14,7 +14,7 @@ param(
     [switch]$Clean
 )
 
-$ErrorActionPreference = "Stop"
+$ErrorActionPreference = "Continue"
 $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 
 # Check prerequisites

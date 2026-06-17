@@ -60,11 +60,11 @@ if ($LASTEXITCODE -eq 0) {
 
 # Check STLink
 Write-Host "`n[*] ST-Link (optional, for flashing)" -ForegroundColor Yellow
-$stlink = st-link --version 2>&1
-if ($LASTEXITCODE -eq 0) {
-    Write-Host "  ✓ ST-Link found" -ForegroundColor Green
+$stlinkCmd = Get-Command STM32_Programmer_CLI -ErrorAction SilentlyContinue
+if ($stlinkCmd) {
+    Write-Host "  ✓ STM32CubeProgrammer found" -ForegroundColor Green
 } else {
-    Write-Host "  ⚠ Not found (install STM32CubeProgrammer for flashing)" -ForegroundColor Yellow
+    Write-Host "  ⚠ STM32CubeProgrammer not found (optional, for flashing)" -ForegroundColor Yellow
 }
 
 # Summary
