@@ -28,6 +28,8 @@
 #include "lcd.h"
 #include "key.h"
 #include "menu.h"
+#include "ota_core.h"
+#include "ota_proto.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -48,6 +50,11 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
+ota_ctx_t g_ota_ctx;
+proto_ctx_t g_proto_ctx;
+static uint8_t g_rx_byte;
+static volatile uint8_t g_frame_ready;
+
 static uint16_t line_buffer[2400];
 
 lcd_io lcd_io_desc = {
@@ -72,7 +79,20 @@ void SystemClock_Config(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+static void uart_send(const uint8_t *data, uint16_t len)
+{
+    HAL_UART_Transmit(&huart1, (uint8_t *)data, len, 1000);
+}
 
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+    if (huart->Instance == USART1) {
+        if (proto_feed_byte(&g_proto_ctx, g_rx_byte)) {
+            g_frame_ready = 1;
+        }
+        HAL_UART_Receive_IT(&huart1, &g_rx_byte, 1);
+    }
+}
 /* USER CODE END 0 */
 
 /**
@@ -111,6 +131,14 @@ int main(void)
   key_init();
   lcd_init_dev(&lcd_dev, LCD_1_14_INCH, LCD_ROTATE_90);
   menu_init(&lcd_dev);
+
+  /* OTA: confirm new firmware is running OK */
+  ota_confirm_app();
+
+  /* OTA: init protocol and start UART receive */
+  ota_init(&g_ota_ctx);
+  proto_init(&g_proto_ctx, uart_send);
+  HAL_UART_Receive_IT(&huart1, &g_rx_byte, 1);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -122,6 +150,12 @@ int main(void)
     /* USER CODE BEGIN 3 */
     key_event_t evt = key_read();
     menu_process(evt);
+
+    /* OTA: process complete frame if received */
+    if (g_frame_ready) {
+        g_frame_ready = 0;
+        proto_process(&g_proto_ctx);
+    }
   }
   /* USER CODE END 3 */
 }
