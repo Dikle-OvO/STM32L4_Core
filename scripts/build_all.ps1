@@ -17,6 +17,27 @@ param(
 $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 
+# Check prerequisites
+Write-Host "Checking prerequisites..." -ForegroundColor Yellow
+$cmake = cmake --version 2>$null
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "ERROR: cmake not found in PATH" -ForegroundColor Red
+    exit 1
+}
+
+$gcc = arm-none-eabi-gcc --version 2>$null
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "ERROR: arm-none-eabi-gcc not found in PATH" -ForegroundColor Red
+    exit 1
+}
+
+$python = python --version 2>$null
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "ERROR: python not found in PATH" -ForegroundColor Red
+    exit 1
+}
+Write-Host "  All prerequisites OK" -ForegroundColor Green
+
 Write-Host "======================================" -ForegroundColor Cyan
 Write-Host " STM32L431 Full Build" -ForegroundColor Cyan
 Write-Host "======================================" -ForegroundColor Cyan
@@ -29,16 +50,30 @@ if ($Clean -and (Test-Path "build_bl")) {
     Remove-Item -Recurse -Force "build_bl"
 }
 
-cmake --preset Release 2>&1 | Out-Null
-$result = cmake --build build_bl 2>&1
+Write-Host "  Configuring..." -ForegroundColor Gray
+$configOutput = cmake --preset Release 2>&1
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "ERROR: CMake configure failed!" -ForegroundColor Red
+    $configOutput | Write-Host
+    Pop-Location
+    exit 1
+}
+
+Write-Host "  Building..." -ForegroundColor Gray
+$buildOutput = cmake --build build_bl 2>&1
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Bootloader build failed!" -ForegroundColor Red
-    $result | Write-Host
+    $buildOutput | Write-Host
     Pop-Location
     exit 1
 }
 
 $blBin = "build_bl/STM32L431_BL.bin"
+if (-not (Test-Path $blBin)) {
+    Write-Host "ERROR: Bootloader binary not generated!" -ForegroundColor Red
+    Pop-Location
+    exit 1
+}
 $blSize = (Get-Item $blBin).Length
 Write-Host "  OK: $blSize bytes" -ForegroundColor Green
 Pop-Location
@@ -51,16 +86,30 @@ if ($Clean -and (Test-Path "build/Release")) {
     Remove-Item -Recurse -Force "build/Release"
 }
 
-cmake --preset Release 2>&1 | Out-Null
-$result = cmake --build build/Release 2>&1
+Write-Host "  Configuring..." -ForegroundColor Gray
+$configOutput = cmake --preset Release 2>&1
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "ERROR: CMake configure failed!" -ForegroundColor Red
+    $configOutput | Write-Host
+    Pop-Location
+    exit 1
+}
+
+Write-Host "  Building..." -ForegroundColor Gray
+$buildOutput = cmake --build build/Release 2>&1
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Application build failed!" -ForegroundColor Red
-    $result | Write-Host
+    $buildOutput | Write-Host
     Pop-Location
     exit 1
 }
 
 $appBin = "build/Release/STM32L431CBT6.bin"
+if (-not (Test-Path $appBin)) {
+    Write-Host "ERROR: Application binary not generated!" -ForegroundColor Red
+    Pop-Location
+    exit 1
+}
 $appSize = (Get-Item $appBin).Length
 Write-Host "  OK: $appSize bytes" -ForegroundColor Green
 Pop-Location
@@ -69,18 +118,27 @@ Pop-Location
 Write-Host "`n[3/3] Merging firmware..." -ForegroundColor Yellow
 Push-Location $Root
 
-python scripts/merge_hex.py `
+$mergeOutput = python scripts/merge_hex.py `
     --bl "Bootloader/$blBin" `
     --app "$appBin" `
-    -o "build/merged_firmware.bin"
+    -o "build/merged_firmware.bin" 2>&1
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "ERROR: Merge failed!" -ForegroundColor Red
+    $mergeOutput | Write-Host
     Pop-Location
     exit 1
 }
 
-$mergedSize = (Get-Item "build/merged_firmware.bin").Length
+$mergeOutput | Write-Host
+
+$mergedFile = "build/merged_firmware.bin"
+if (-not (Test-Path $mergedFile)) {
+    Write-Host "ERROR: Merged firmware not generated!" -ForegroundColor Red
+    Pop-Location
+    exit 1
+}
+$mergedSize = (Get-Item $mergedFile).Length
 Pop-Location
 
 Write-Host "`n======================================" -ForegroundColor Cyan

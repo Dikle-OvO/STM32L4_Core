@@ -52,6 +52,16 @@ STM32L4_Core/
 - Ninja
 - Python 3
 
+### 诊断环境
+
+在新电脑上构建前，先检查环境：
+
+```powershell
+.\scripts\diagnose.ps1
+```
+
+如果有缺失的工具，按提示安装即可。
+
 ### 一键构建
 
 ```powershell
@@ -143,3 +153,53 @@ Host                              MCU (APP)                    MCU (BL)
 - CRC-16/MODBUS，覆盖 CMD ~ PAYLOAD
 - SEQ: 0-255 循环，用于数据包顺序校验
 - 最大 payload: 1024 bytes
+
+## 故障排查
+
+### 构建失败
+
+**问题**：`cmake : Build type: Release` 相关错误
+
+**原因**：环境变量或工具链未正确配置
+
+**解决**：
+1. 运行诊断脚本检查环境
+   ```powershell
+   .\scripts\diagnose.ps1
+   ```
+2. 确保 PATH 中包含：
+   - `arm-none-eabi-gcc` 工具链路径
+   - CMake 安装路径
+   - Ninja 安装路径
+3. 如果使用 STM32CubeCLT，需要先运行其环境初始化脚本
+
+**Windows PATH 设置**（Win+R → sysdm.cpl）：
+```
+C:\GNU-tools-for-STM32\bin
+C:\Program Files\CMake\bin
+C:\path\to\ninja
+```
+
+### 启动死机
+
+**问题**：烧录后系统无响应
+
+**原因**：VTOR（中断向量表）配置不对
+
+**解决**：已在 `Core/Src/system_stm32l4xx.c` 中修复，确保：
+```c
+#define USER_VECT_TAB_ADDRESS
+#define VECT_TAB_OFFSET  0x00004000U   // APP 的偏移
+```
+
+重新构建并烧录。
+
+### 调试连接失败
+
+**问题**：IDE 无法 attach 调试
+
+**解决**：
+1. 确认 ST-Link 驱动已安装
+2. 检查 USB 连接
+3. 使用 STM32CubeProgrammer 验证连接是否正常
+4. IDE 中选择正确的 `.elf` 文件（`Bootloader/build_bl/STM32L431_BL.elf` 或 `build/Release/STM32L431CBT6.elf`）
