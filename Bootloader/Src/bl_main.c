@@ -14,16 +14,32 @@ static void BL_USART1_Init(void);
 static UART_HandleTypeDef bl_huart1;
 
 /**
- * @brief  UART 发送回调 (适配 util_uart 接口)
+ * @brief  SysTick 中断处理 (HAL_Init 会启用 SysTick, 必须提供此函数)
+ */
+void SysTick_Handler(void)
+{
+    HAL_IncTick();
+}
+
+/**
+ * @brief  UART 发送回调 (直接寄存器轮询, 不依赖 HAL tick)
  */
 static int bl_uart_tx(const uint8_t *data, uint16_t len)
 {
-    HAL_StatusTypeDef rc = HAL_UART_Transmit(&bl_huart1, data, len, 100);
-    return (rc == HAL_OK) ? 0 : -1;
+    for (uint16_t i = 0; i < len; i++) {
+        while (!(USART1->ISR & USART_ISR_TXE)) {}
+        USART1->TDR = data[i];
+    }
+    while (!(USART1->ISR & USART_ISR_TC)) {}
+    return 0;
 }
 
 int main(void)
 {
+    /* BL 向量表在 0x08000000, 必须在 HAL_Init 之前矫正 VTOR
+     * (system_stm32l4xx.c 的 SystemInit 会将 VTOR 设为 APP 偏移 0x4000) */
+    SCB->VTOR = FLASH_BASE;
+
     /* Minimal HAL init */
     HAL_Init();
     SystemClock_Config();
