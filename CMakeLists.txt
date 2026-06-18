@@ -54,6 +54,7 @@ target_sources(${CMAKE_PROJECT_NAME} PRIVATE
     Components/OTA/bl_meta.c
     Components/OTA/ota_core.c
     Components/OTA/ota_proto.c
+    # Components/Util/util_uart.c
 )
 
 # Add include paths
@@ -63,6 +64,7 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     Components/KEY
     Components/Menu
     Components/OTA
+    # Components/Util
 )
 
 # Add project symbols (macros)

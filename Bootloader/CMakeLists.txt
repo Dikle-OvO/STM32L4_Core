@@ -45,6 +45,7 @@ set(BL_SOURCES
     Src/bl_core.c
     Src/bl_meta.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../Components/OTA/flash_port.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../Components/Util/util_uart.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../startup_stm32l431xx.s
     ${CMAKE_CURRENT_SOURCE_DIR}/../Core/Src/system_stm32l4xx.c
 )
@@ -60,6 +61,7 @@ set(HAL_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/../Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_gpio.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_pwr.c
     ${CMAKE_CURRENT_SOURCE_DIR}/../Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_pwr_ex.c
+    ${CMAKE_CURRENT_SOURCE_DIR}/../Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_uart.c
 )
 
 # ============================================================================
@@ -70,6 +72,7 @@ add_executable(${CMAKE_PROJECT_NAME} ${BL_SOURCES} ${HAL_SOURCES})
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
     Inc
     ${CMAKE_CURRENT_SOURCE_DIR}/../Components/OTA
+    ${CMAKE_CURRENT_SOURCE_DIR}/../Components/Util
     ${CMAKE_CURRENT_SOURCE_DIR}/../Core/Inc
     ${CMAKE_CURRENT_SOURCE_DIR}/../Drivers/STM32L4xx_HAL_Driver/Inc
     ${CMAKE_CURRENT_SOURCE_DIR}/../Drivers/STM32L4xx_HAL_Driver/Inc/Legacy

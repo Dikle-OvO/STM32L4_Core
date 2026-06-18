@@ -1,6 +1,7 @@
 #include "bl_core.h"
 #include "bl_meta.h"
 #include "flash_port.h"
+#include "util_uart.h"
 #include "stm32l4xx_hal.h"
 #include <string.h>
 
@@ -47,12 +48,15 @@ int bl_swap_slot1_to_slot0(uint32_t size)
 
     /* Erase Slot 0 (only pages needed) */
     uint32_t erase_size = ((size + FLASH_PAGE_SIZE_BYTES - 1) / FLASH_PAGE_SIZE_BYTES) * FLASH_PAGE_SIZE_BYTES;
+    util_uart_printf("[BL] Erasing slot0 %u bytes...\r\n", (unsigned)erase_size);
     rc = flash_part_erase(slot0, 0, erase_size);
     if (rc != FLASH_OK) {
+        util_uart_printf("[BL] Erase FAILED rc=%d\r\n", rc);
         return rc;
     }
 
     /* Copy from Slot 1 to Slot 0 in chunks */
+    uint32_t last_pct = 0;
     while (offset < size) {
         uint32_t chunk = sizeof(buf);
         if ((size - offset) < chunk) {
@@ -65,17 +69,27 @@ int bl_swap_slot1_to_slot0(uint32_t size)
 
         rc = flash_part_read(slot1, offset, chunk, buf);
         if (rc != FLASH_OK) {
+            util_uart_printf("[BL] Read FAILED at 0x%X rc=%d\r\n", (unsigned)offset, rc);
             return rc;
         }
 
         rc = flash_part_write(slot0, offset, write_len, buf);
         if (rc != FLASH_OK) {
+            util_uart_printf("[BL] Write FAILED at 0x%X rc=%d\r\n", (unsigned)offset, rc);
             return rc;
         }
 
         offset += chunk;
+
+        /* 每 10% 打印一次进度 */
+        uint32_t pct = (offset * 100) / size;
+        if (pct / 10 > last_pct / 10) {
+            last_pct = pct;
+            util_uart_printf("[BL] Swap progress: %u%%\r\n", (unsigned)pct);
+        }
     }
 
+    util_uart_printf("[BL] Swap complete\r\n");
     return 0;
 }
 
@@ -134,17 +148,22 @@ void bl_run(void)
     rc = meta_load(&meta);
     if (rc != 0) {
         /* Metadata corrupted - initialize defaults and try boot */
+        util_uart_printf("[BL] Meta corrupted, init defaults\r\n");
         meta_init_default(&meta);
         meta_save(&meta);
     }
 
+    util_uart_printf("[BL] Boot state: %u\r\n", (unsigned)meta.boot_state);
+
     switch (meta.boot_state) {
     case BOOT_STATE_SWAP:
         /* OTA firmware ready in Slot 1, swap to Slot 0 */
+        util_uart_printf("[BL] SWAP: size=%u\r\n", (unsigned)meta.ota_size);
         if (meta.ota_size > 0 && meta.ota_size <= PART_SLOT0_SIZE) {
             rc = bl_swap_slot1_to_slot0(meta.ota_size);
             if (rc == 0) {
                 /* Swap success: enter TESTING state */
+                util_uart_printf("[BL] Swap OK, enter TESTING\r\n");
                 meta.boot_state = BOOT_STATE_TESTING;
                 meta.boot_count = 0;
                 meta.app_size = meta.ota_size;
@@ -153,6 +172,7 @@ void bl_run(void)
                 meta_save(&meta);
             } else {
                 /* Swap failed: stay NORMAL, boot old APP */
+                util_uart_printf("[BL] Swap FAILED rc=%d\r\n", rc);
                 meta.boot_state = BOOT_STATE_NORMAL;
                 meta_save(&meta);
             }
@@ -165,6 +185,8 @@ void bl_run(void)
     case BOOT_STATE_TESTING:
         /* Increment boot count; if exceeded, rollback */
         meta.boot_count++;
+        util_uart_printf("[BL] TESTING: boot_count=%u/%u\r\n",
+                         (unsigned)meta.boot_count, (unsigned)meta.max_boot_count);
         if (meta.boot_count > meta.max_boot_count) {
             /* Too many unsuccessful boots - mark rollback */
             meta.boot_state = BOOT_STATE_ROLLBACK;
@@ -191,9 +213,11 @@ void bl_run(void)
     /* Validate and jump to APP */
     uint32_t app_addr = FLASH_BASE_ADDR + PART_SLOT0_OFFSET;
     if (bl_validate_image(app_addr) == 0) {
+        util_uart_printf("[BL] APP valid, jumping to 0x%08X\r\n", (unsigned)app_addr);
         bl_jump_to_app(app_addr);
     }
 
+    util_uart_printf("[BL] APP invalid at 0x%08X\r\n", (unsigned)app_addr);
     /* APP invalid: stay in bootloader (wait for recovery via UART, etc.) */
     while (1) {
         HAL_Delay(1000);
