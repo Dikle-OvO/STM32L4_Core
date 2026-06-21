@@ -98,7 +98,7 @@ static void SystemClock_Config(void)
 }
 
 /**
- * @brief  Bootloader 专用 USART1 初始化 (PA9-TX, PA10-RX, 115200)
+ * @brief  Bootloader 专用 USART1 初始化 (PA9-TX, PA10-RX, 921600)
  */
 static void BL_USART1_Init(void)
 {
@@ -116,9 +116,9 @@ static void BL_USART1_Init(void)
     GPIO_InitStruct.Alternate = GPIO_AF7_USART1;
     HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
-    /* UART config: 115200, 8N1 */
+    /* UART config: 921600, 8N1 */
     bl_huart1.Instance = USART1;
-    bl_huart1.Init.BaudRate = 115200;
+    bl_huart1.Init.BaudRate = 921600;
     bl_huart1.Init.WordLength = UART_WORDLENGTH_8B;
     bl_huart1.Init.StopBits = UART_STOPBITS_1;
     bl_huart1.Init.Parity = UART_PARITY_NONE;

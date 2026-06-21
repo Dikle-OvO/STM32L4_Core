@@ -272,10 +272,16 @@ ota_state_t ota_get_state(const ota_ctx_t *ctx)
 
 uint8_t ota_get_progress(const ota_ctx_t *ctx)
 {
-    if (ctx->state != OTA_STATE_RECEIVING || ctx->header.fw_size == 0) {
+    if (ctx->header.fw_size == 0) {
         return 0;
     }
-    return (uint8_t)((ctx->received_size * 100U) / ctx->header.fw_size);
+    if (ctx->state == OTA_STATE_VERIFYING || ctx->state == OTA_STATE_DONE) {
+        return 100;     /* 全部接收完成 */
+    }
+    if (ctx->state == OTA_STATE_RECEIVING) {
+        return (uint8_t)((ctx->received_size * 100U) / ctx->header.fw_size);
+    }
+    return 0;           /* IDLE / HEADER / ERROR */
 }
 
 int ota_confirm_app(void)

@@ -53,7 +53,7 @@
 ota_ctx_t g_ota_ctx;
 proto_ctx_t g_proto_ctx;
 static uint8_t g_rx_byte;
-static volatile uint8_t g_frame_ready;
+volatile uint8_t g_frame_ready;
 
 static uint16_t line_buffer[2400];
 

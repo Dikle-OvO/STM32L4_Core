@@ -3,17 +3,28 @@
  * @brief 极客风菜单系统 —— 单击切换 / 双击确认 / 长按返回
  *
  * 页面:
- *   MAIN     ── 主菜单 (System Info / LED Control / About)
+ *   MAIN     ── 主菜单 (System Info / LED Control / About / Test)
  *   SYSINFO  ── 系统信息 (MCU、时钟、Flash、HAL 版本)
  *   LED      ── LED 亮灯控制 (R / G / B 独立开关)
  *   ABOUT    ── 关于 (固件版本、编译日期、LCD 型号)
+ *   TEST     ── 测试 (全屏刷色 / OTA参数查看)
  */
 
 #include "menu.h"
 #include "main.h"
+#include "ota_core.h"
+#include "ota_proto.h"
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
+
+/* OTA 全局上下文 (定义在 main.c) */
+extern ota_ctx_t   g_ota_ctx;
+extern proto_ctx_t g_proto_ctx;
+extern volatile uint8_t g_frame_ready;
+
+/* ota_proto.h 中的帧处理函数 */
+void proto_process(proto_ctx_t *ctx);
 
 /* ====================== 页面枚举 ====================== */
 typedef enum {
@@ -25,7 +36,7 @@ typedef enum {
 } page_t;
 
 #define MAIN_ITEMS   4
-#define TEST_ITEMS   1
+#define TEST_ITEMS   2
 #define LED_ITEMS    3
 
 /* ============ 极客配色 (绿色终端风格) ============ */
@@ -176,9 +187,137 @@ static void run_fill_test(void)
     mline(112, C_DIM,   " Any key to return");
 }
 
+/* ---------- OTA 参数查询 (像素级局部刷新, 不闪屏) ---------- */
+/* FONT_1608 每字符 8px 宽, mline 每行固定 30 字符 = 240px = 满宽 */
+/* 每行布局: "  LABEL : VALUE________________" (VALUE 从固定列开始) */
+#define COL_VAL_STATE     (13 * 8)   /* "  State   : " = 13 字符 → x=104 */
+#define COL_VAL_PROGRESS  (11 * 8)   /* " Progress: "    = 11 字符 → x=88  */
+#define COL_VAL_SIZE      (11 * 8)   /* " FW Size : "    = 11 字符 → x=88  */
+#define COL_VAL_OTAVER    (11 * 8)   /* " OTA Ver : "    = 11 字符 → x=88  */
+#define WID_VAL           17         /* value 区域字符数 (30 - prefix) */
+
+/* 仅在指定 (x,y) 处绘制 max_w 字符的文本, 自动清除旧值残余 */
+static void draw_val(uint16_t x, uint16_t y, uint16_t fg,
+                     uint8_t max_w, const char *fmt, ...)
+{
+    char buf[32];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+
+    /* 填充空格到 max_w, 覆盖可能更长的旧值 */
+    int len = (int)strlen(buf);
+    while (len < max_w) buf[len++] = ' ';
+    buf[max_w] = '\0';
+
+    lcd_set_font(dev, FONT_1608, fg, C_BG);
+    lcd_show_string(dev, x, y, (const uint8_t *)buf);
+}
+
+static void run_ota_query(void)
+{
+    static const char *state_names[] = {
+        "IDLE", "HEADER", "RECEIVING",
+        "VERIFYING", "DONE", "ERROR"
+    };
+    uint32_t app_ver = 0x00010000U;
+
+    ota_state_t last_state   = 99;
+    uint8_t     last_pct     = 0xFF;
+    uint32_t    last_fw_size = 0xFFFFFFFFU;
+    uint32_t    last_fw_ver  = 0xFFFFFFFFU;
+    uint32_t    refresh_tick = 0;
+
+    /* ── 首帧: 全屏绘制 (只这一次全刷) ── */
+    lcd_clear(dev, C_BG);
+    mline(0,    C_TITLE, "  <*> OTA STATUS <*>");
+    mline(16,   C_BAR,   "==============================");
+
+    /* 静态标签行 (label 部分不变, value 留给 draw_val 更新) */
+    mline(32,   C_TEXT,  " State   :");
+    mline(48,   C_TEXT,  " Progress:");
+    mline(64,   C_TEXT,  " FW Size :");
+
+    mline(80,   C_TEXT,  " App Ver : v%lu.%lu.%lu (0x%08lX)",
+          (unsigned long)((app_ver >> 16) & 0xFF),
+          (unsigned long)((app_ver >> 8)  & 0xFF),
+          (unsigned long)( app_ver        & 0xFF),
+          (unsigned long)app_ver);
+    mline(96,   C_TEXT,  " OTA Ver :");
+    mline(112,  C_DIM,   " Any key to return");
+
+    while (1) {
+        uint32_t now = HAL_GetTick();
+
+        if ((now - refresh_tick) >= 300 || refresh_tick == 0) {
+            refresh_tick = now;
+
+            ota_state_t state = ota_get_state(&g_ota_ctx);
+            uint8_t    pct    = ota_get_progress(&g_ota_ctx);
+            uint32_t   fw_size = g_ota_ctx.header.fw_size;
+            uint32_t   fw_ver  = g_ota_ctx.header.fw_version;
+
+            /* State (仅变化时更新) */
+            if (state != last_state) {
+                last_state = state;
+                const char *sname = (state <= OTA_STATE_ERROR)
+                                    ? state_names[state] : "???";
+                uint16_t sc = C_TEXT;
+                if (state == OTA_STATE_ERROR)      sc = RED;
+                else if (state == OTA_STATE_DONE)  sc = GREEN;
+                else if (state != OTA_STATE_IDLE)  sc = YELLOW;
+                draw_val(COL_VAL_STATE, 32, sc, WID_VAL, "%s", sname);
+            }
+
+            /* Progress (仅百分比变化时更新) */
+            if (pct != last_pct) {
+                last_pct = pct;
+                draw_val(COL_VAL_PROGRESS, 48, C_TEXT, WID_VAL,
+                         "%u%%", (unsigned)pct);
+            }
+
+            /* FW Size (仅变化时更新) */
+            if (fw_size != last_fw_size) {
+                last_fw_size = fw_size;
+                draw_val(COL_VAL_SIZE, 64, C_TEXT, WID_VAL,
+                         "%lu B", (unsigned long)fw_size);
+            }
+
+            /* OTA Ver (状态或版本变化时更新) */
+            if (state != last_state || fw_ver != last_fw_ver) {
+                last_fw_ver = fw_ver;
+                if (state != OTA_STATE_IDLE && fw_ver != 0) {
+                    draw_val(COL_VAL_OTAVER, 96, C_TEXT, WID_VAL,
+                             "v%lu.%lu.%lu",
+                             (unsigned long)((fw_ver >> 16) & 0xFF),
+                             (unsigned long)((fw_ver >> 8)  & 0xFF),
+                             (unsigned long)( fw_ver        & 0xFF));
+                } else {
+                    draw_val(COL_VAL_OTAVER, 96, C_DIM, WID_VAL, "N/A");
+                }
+            }
+        }
+
+        /* 处理 OTA 帧 */
+        if (g_frame_ready) {
+            g_frame_ready = 0;
+            proto_process(&g_proto_ctx);
+        }
+
+        /* 任意键退出 (事件被消耗, 返回后 menu_process 直接 draw_page) */
+        key_event_t evt = key_read();
+        if (evt != KEY_EVENT_NONE) {
+            break;
+        }
+
+        HAL_Delay(10);
+    }
+}
+
 static void draw_test(void)
 {
-    static const char *items[] = {"Fill Screen"};
+    static const char *items[] = {"Fill Screen", "OTA Status"};
 
     mline(0,   C_TITLE, "  <*> TEST <*>");
     mline(16,  C_BAR,   "==============================");
@@ -189,9 +328,10 @@ static void draw_test(void)
         mline(32 + i * 16, fg, "  %c %s", cur, items[i]);
     }
 
-    mline(48,  C_BG,  "");
-    mline(64,  C_BG,  "");
-    mline(80,  C_BG,  "");
+    /* 空白占位从 item 列表末尾开始 */
+    mline(32 + TEST_ITEMS * 16,  C_BG,  "");
+    mline(32 + TEST_ITEMS * 16 + 16, C_BG, "");
+    mline(32 + TEST_ITEMS * 16 + 32, C_BG, "");
     mline(96,  C_BAR, "==============================");
     mline(112, C_DIM, " Clk:Nav DClk:Run Long:Back");
 }
@@ -256,7 +396,10 @@ void menu_process(key_event_t evt)
             cursor = (cursor + 1) % TEST_ITEMS;
         } else if (evt == KEY_EVENT_DOUBLE_CLICK) {
             if (cursor == 0) run_fill_test();
-            return;  /* 结果页面已绘制，等待任意键 */
+            else if (cursor == 1) run_ota_query();
+            /* 子函数退出后立即回到测试页, 只需按一次键 */
+            draw_page();
+            return;
         } else if (evt == KEY_EVENT_LONG_PRESS) {
             page   = PAGE_MAIN;
             cursor = 0;
