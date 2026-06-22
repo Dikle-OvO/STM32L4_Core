@@ -2,10 +2,21 @@
     "version": 6,
     "configurePresets": [
         {
+            "name": "Debug",
+            "displayName": "Debug",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/build_bl/${presetName}",
+            "toolchainFile": "${sourceDir}/cmake/toolchain.cmake",
+            "cacheVariables": {
+                "CMAKE_BUILD_TYPE": "Debug",
+                "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
+            }
+        },
+        {
             "name": "Release",
             "displayName": "Release",
             "generator": "Ninja",
-            "binaryDir": "${sourceDir}/build_bl",
+            "binaryDir": "${sourceDir}/build_bl/${presetName}",
             "toolchainFile": "${sourceDir}/cmake/toolchain.cmake",
             "cacheVariables": {
                 "CMAKE_BUILD_TYPE": "Release",
@@ -14,6 +25,10 @@
         }
     ],
     "buildPresets": [
+        {
+            "name": "Debug",
+            "configurePreset": "Debug"
+        },
         {
             "name": "Release",
             "configurePreset": "Release"
