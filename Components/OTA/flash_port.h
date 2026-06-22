@@ -35,7 +35,8 @@ extern "C" {
  * | Bootloader   | 0-7    | 0x08000000 | 0x08003FFF | 16KB  |
  * | Slot 0 (APP) | 8-33   | 0x08004000 | 0x08010FFF | 52KB  |
  * | Slot 1 (OTA) | 34-59  | 0x08011000 | 0x0801DFFF | 52KB  |
- * | Metadata     | 60-63  | 0x0801E000 | 0x0801FFFF |  8KB  |
+ * | Swap Status  | 60-61  | 0x0801E000 | 0x0801EFFF |  4KB  |
+ * | Metadata     | 62-63  | 0x0801F000 | 0x0801FFFF |  4KB  |
  * ========================================================================= */
 
 #define PART_BOOT_OFFSET        0x00000000U
@@ -47,8 +48,11 @@ extern "C" {
 #define PART_SLOT1_OFFSET       0x00011000U
 #define PART_SLOT1_SIZE         (52U * 1024U)
 
-#define PART_META_OFFSET        0x0001E000U
-#define PART_META_SIZE          (8U * 1024U)
+#define PART_SWAP_STATUS_OFFSET 0x0001E000U
+#define PART_SWAP_STATUS_SIZE   (4U * 1024U)
+
+#define PART_META_OFFSET        0x0001F000U
+#define PART_META_SIZE          (4U * 1024U)
 
 /* Error codes */
 #define FLASH_OK                0
@@ -125,6 +129,7 @@ int flash_part_erase(const struct flash_partition *part,
 const struct flash_partition *flash_get_partition_boot(void);
 const struct flash_partition *flash_get_partition_slot0(void);
 const struct flash_partition *flash_get_partition_slot1(void);
+const struct flash_partition *flash_get_partition_swap_status(void);
 const struct flash_partition *flash_get_partition_meta(void);
 
 /**

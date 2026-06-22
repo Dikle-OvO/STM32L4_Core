@@ -11,7 +11,7 @@ extern "C" {
 #define APP_ADDR        (FLASH_BASE_ADDR + PART_SLOT0_OFFSET)
 
 /**
- * @brief  Bootloader 主逻辑: 检查元数据、执行 swap/rollback、跳转 APP
+ * @brief  Bootloader 主逻辑: 检查元数据、执行 swap、跳转 APP
  * @note   此函数正常情况不返回 (跳转到 APP)
  */
 void bl_run(void);
@@ -22,13 +22,6 @@ void bl_run(void);
  * @return 0 有效, -1 无效
  */
 int bl_validate_image(uint32_t addr);
-
-/**
- * @brief  从 Slot 1 拷贝固件到 Slot 0
- * @param  size: 固件大小 (bytes)
- * @return 0 成功, 负值错误
- */
-int bl_swap_slot1_to_slot0(uint32_t size);
 
 /**
  * @brief  跳转到 APP

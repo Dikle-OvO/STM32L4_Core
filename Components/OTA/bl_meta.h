@@ -10,18 +10,19 @@ extern "C" {
 /* ============================================================================
  * OTA Metadata Structure
  * ============================================================================
- * 存储在 Metadata 分区，两份冗余 (primary + backup)
+ * 存储在 Metadata 分区 (4KB = 2 pages)，两份冗余 (primary + backup)
  * 每份占一个 page (2KB)，实际使用前 64 字节
  * ========================================================================= */
 
 #define META_MAGIC              0x4F54414DU  /* "OTAM" */
-#define META_VERSION            1U
+#define META_VERSION            2U
 
 /* Boot 状态 */
 #define BOOT_STATE_NORMAL   0x00U     /* 正常启动 Slot 0 */
-#define BOOT_STATE_SWAP     0x01U     /* 需要从 Slot 1 拷贝到 Slot 0 */
-#define BOOT_STATE_TESTING  0x02U     /* 新固件测试中 (等待 APP 确认) */
-#define BOOT_STATE_ROLLBACK 0x03U     /* 回滚到旧固件 */
+#define BOOT_STATE_SWAP     0x01U     /* 需要交换 Slot 0 ↔ Slot 1 */
+#define BOOT_STATE_SWAPPING 0x02U     /* 交换进行中 (掉电可恢复) */
+#define BOOT_STATE_TESTING  0x03U     /* 新固件测试中 (等待 APP 确认) */
+#define BOOT_STATE_ROLLBACK 0x04U     /* 需要回滚: 再次交换回旧固件 */
 
 /* 元数据结构 (64 bytes, 8-byte aligned) */
 typedef struct __attribute__((packed, aligned(8))) {
@@ -47,24 +48,8 @@ _Static_assert(sizeof(boot_meta_t) == 64, "boot_meta_t must be 64 bytes");
  * API
  * ========================================================================= */
 
-/**
- * @brief  从 Metadata 分区读取有效元数据 (自动校验 CRC, 主/备冗余)
- * @param  meta: 输出元数据
- * @return 0 成功, -1 两份均损坏
- */
 int meta_load(boot_meta_t *meta);
-
-/**
- * @brief  写入元数据到 Metadata 分区 (同时写主/备, 自动计算 CRC)
- * @param  meta: 待写入元数据
- * @return 0 成功, 负值错误
- */
 int meta_save(boot_meta_t *meta);
-
-/**
- * @brief  初始化默认元数据 (首次启动或全损坏时调用)
- * @param  meta: 输出元数据
- */
 void meta_init_default(boot_meta_t *meta);
 
 #ifdef __cplusplus

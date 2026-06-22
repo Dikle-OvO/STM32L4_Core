@@ -141,7 +141,7 @@ uint8_t ota_get_progress(const ota_ctx_t *ctx);
 
 /**
  * @brief  APP 启动后调用: 确认新固件运行正常
- *         将 metadata 的 boot_state 从 TESTING 改为 NORMAL
+ *         将 boot_state 从 TESTING 改为 NORMAL, 防止回滚
  * @return OTA_OK 或负值错误
  */
 int ota_confirm_app(void);

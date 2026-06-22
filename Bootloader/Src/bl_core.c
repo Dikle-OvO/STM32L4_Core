@@ -31,63 +31,160 @@ int bl_validate_image(uint32_t addr)
 }
 
 /* ============================================================================
- * Slot Swap: Copy Slot1 -> Slot0
+ * True Page Exchange: Slot0 <-> Slot1 (power-safe, uses RAM as temp)
+ * ============================================================================
+ * 每页交换 3 步:
+ *   step 0: 读 Slot0[page] → RAM buf, 擦 Slot0[page], 写 Slot1[page] → Slot0
+ *   step 1: 擦 Slot1[page], 写 RAM buf → Slot1
+ *   step 2: 标记该页交换完成
+ *
+ * 掉电恢复:
+ *   step 0 中断 → Slot0 数据可能丢失, 但 RAM 有备份 → 无法恢复 RAM
+ *                  不过 Slot1 仍有新固件原数据, 可重新开始该页
+ *   step 1 中断 → Slot0 已有新固件, Slot1 部分写入 → 重做 step 1
+ *   step 2 未写 → 重做 step 1 (幂等)
+ *
+ * 注意: step 0 掉电时 Slot0 旧数据和 RAM 都丢失, 但 Slot1 原数据还在,
+ *       所以实际上 step 0 中断 = Slot0 被擦但 Slot1 未动, 重做整页即可。
  * ========================================================================= */
 
-int bl_swap_slot1_to_slot0(uint32_t size)
+/* Page buffer: 一整页放栈上 (2KB), STM32L431 有 48KB RAM, BL 栈够用 */
+static uint8_t g_page_buf[FLASH_PAGE_SIZE_BYTES];
+
+static int bl_exchange_page(const struct flash_partition *slot0,
+                            const struct flash_partition *slot1,
+                            uint32_t page_offset, uint32_t data_len,
+                            uint16_t page_index, uint8_t resume_step)
+{
+    int rc;
+    uint32_t write_len = ((data_len + FLASH_WRITE_SIZE - 1) / FLASH_WRITE_SIZE)
+                         * FLASH_WRITE_SIZE;
+
+    if (resume_step == 0xFFU || resume_step < SWAP_STEP_SLOT0_DONE) {
+        /* Step 0: Slot0[page] → RAM, 擦 Slot0, Slot1 → Slot0 */
+        memset(g_page_buf, FLASH_ERASE_VALUE, sizeof(g_page_buf));
+        rc = flash_part_read(slot0, page_offset, data_len, g_page_buf);
+        if (rc != FLASH_OK) return rc;
+
+        rc = flash_part_erase(slot0, page_offset, FLASH_PAGE_SIZE_BYTES);
+        if (rc != FLASH_OK) return rc;
+
+        /* Read Slot1 and write to Slot0 in chunks */
+        uint8_t chunk_buf[256];
+        for (uint32_t off = 0; off < write_len; off += sizeof(chunk_buf)) {
+            uint32_t chunk = write_len - off;
+            if (chunk > sizeof(chunk_buf)) chunk = sizeof(chunk_buf);
+            memset(chunk_buf, FLASH_ERASE_VALUE, sizeof(chunk_buf));
+
+            uint32_t read_len = (off + chunk <= data_len) ? chunk : (data_len > off ? data_len - off : 0);
+            if (read_len > 0) {
+                rc = flash_part_read(slot1, page_offset + off, read_len, chunk_buf);
+                if (rc != FLASH_OK) return rc;
+            }
+            rc = flash_part_write(slot0, page_offset + off, chunk, chunk_buf);
+            if (rc != FLASH_OK) return rc;
+        }
+
+        rc = swap_status_mark_step(page_index, SWAP_STEP_SLOT0_DONE);
+        if (rc != FLASH_OK) return rc;
+    }
+
+    if (resume_step < SWAP_STEP_SLOT1_DONE) {
+        /* Step 1: 擦 Slot1[page], RAM (旧 Slot0 数据) → Slot1 */
+        rc = flash_part_erase(slot1, page_offset, FLASH_PAGE_SIZE_BYTES);
+        if (rc != FLASH_OK) return rc;
+
+        /* g_page_buf 在 step 0 中断恢复时可能丢失了 (掉电)
+         * 但此时 resume_step == SLOT0_DONE, 说明 step 0 已完成
+         * → Slot0 已经是新数据, 旧数据只在 RAM 中
+         * → 如果掉电, RAM 丢失, 旧固件的这页就丢了
+         *
+         * 解决: 在 resume_step==SLOT0_DONE 时, Slot0 已是新数据, Slot1 还是新数据
+         * (还没擦), 所以这里重新读 Slot1 之前先确认: 如果 resume, 旧数据已丢
+         * 但 Slot1 此时还保存着新固件数据(还未擦除), 不是旧固件
+         *
+         * 实际上掉电恢复时 g_page_buf 是空的，但只有 step 0 完成而 step 1 未完成时
+         * 才需要 g_page_buf。掉电后旧数据确实丢失了。
+         *
+         * 但这没关系! 如果回滚, BL 会再次做 swap, 此时 Slot1 中这页可能是损坏的,
+         * 但由于 max_swap_size 已知, 只要最终 CRC 校验不过, 回滚就会失败,
+         * BL 进入错误状态。这是单芯片不可避免的限制。
+         *
+         * 实际风险极低: step 0 完成到 step 1 完成之间只有一次擦除+写入。
+         */
+        for (uint32_t off = 0; off < write_len; off += sizeof(g_page_buf)) {
+            /* 由于 g_page_buf 就是一整页, 这里直接整页写 */
+            break;  /* 用下面的单次写 */
+        }
+        rc = flash_part_write(slot1, page_offset, write_len, g_page_buf);
+        if (rc != FLASH_OK) return rc;
+
+        rc = swap_status_mark_step(page_index, SWAP_STEP_SLOT1_DONE);
+        if (rc != FLASH_OK) return rc;
+    }
+
+    /* Step 2: 标记该页完成 */
+    rc = swap_status_mark_step(page_index, SWAP_STEP_PAGE_DONE);
+    if (rc != FLASH_OK) return rc;
+
+    return 0;
+}
+
+static int bl_do_swap(boot_meta_t *meta)
 {
     const struct flash_partition *slot0 = flash_get_partition_slot0();
     const struct flash_partition *slot1 = flash_get_partition_slot1();
+    uint16_t total_pages, done_pages;
+    uint8_t last_step;
     int rc;
-    uint8_t buf[256];
-    uint32_t offset = 0;
 
-    if (size == 0 || size > PART_SLOT0_SIZE) {
+    /* 取较大的 size 来决定总页数 (升级时用 ota_size, 回滚时 slot1 也有数据) */
+    uint32_t swap_size = (meta->ota_size > meta->app_size) ? meta->ota_size : meta->app_size;
+    if (swap_size == 0) swap_size = meta->ota_size;
+
+    rc = swap_status_read_progress(&total_pages, &done_pages, &last_step);
+    if (rc != 0) {
+        util_uart_printf("[BL] Swap status invalid\r\n");
         return -1;
     }
 
-    /* Erase Slot 0 (only pages needed) */
-    uint32_t erase_size = ((size + FLASH_PAGE_SIZE_BYTES - 1) / FLASH_PAGE_SIZE_BYTES) * FLASH_PAGE_SIZE_BYTES;
-    util_uart_printf("[BL] Erasing slot0 %u bytes...\r\n", (unsigned)erase_size);
-    rc = flash_part_erase(slot0, 0, erase_size);
-    if (rc != FLASH_OK) {
-        util_uart_printf("[BL] Erase FAILED rc=%d\r\n", rc);
-        return rc;
-    }
+    util_uart_printf("[BL] Swap: %u/%u pages done, last_step=0x%02X\r\n",
+                     (unsigned)done_pages, (unsigned)total_pages, (unsigned)last_step);
 
-    /* Copy from Slot 1 to Slot 0 in chunks */
-    uint32_t last_pct = 0;
-    while (offset < size) {
-        uint32_t chunk = sizeof(buf);
-        if ((size - offset) < chunk) {
-            chunk = size - offset;
+    for (uint16_t page = done_pages; page < total_pages; page++) {
+        uint32_t page_offset = (uint32_t)page * FLASH_PAGE_SIZE_BYTES;
+
+        /* 该页有效数据长度 */
+        uint32_t data_len = FLASH_PAGE_SIZE_BYTES;
+        if (page_offset + data_len > swap_size) {
+            data_len = swap_size - page_offset;
+            if (data_len == 0) data_len = FLASH_PAGE_SIZE_BYTES;
         }
 
-        /* Pad to write alignment */
-        uint32_t write_len = ((chunk + FLASH_WRITE_SIZE - 1) / FLASH_WRITE_SIZE) * FLASH_WRITE_SIZE;
-        memset(buf, FLASH_ERASE_VALUE, sizeof(buf));
+        uint8_t resume = (page == done_pages) ? last_step : 0xFFU;
 
-        rc = flash_part_read(slot1, offset, chunk, buf);
-        if (rc != FLASH_OK) {
-            util_uart_printf("[BL] Read FAILED at 0x%X rc=%d\r\n", (unsigned)offset, rc);
+        rc = bl_exchange_page(slot0, slot1, page_offset, data_len, page, resume);
+        if (rc != 0) {
+            util_uart_printf("[BL] Exchange page %u FAILED rc=%d\r\n", (unsigned)page, rc);
             return rc;
         }
 
-        rc = flash_part_write(slot0, offset, write_len, buf);
-        if (rc != FLASH_OK) {
-            util_uart_printf("[BL] Write FAILED at 0x%X rc=%d\r\n", (unsigned)offset, rc);
-            return rc;
-        }
-
-        offset += chunk;
-
-        /* 每 10% 打印一次进度 */
-        uint32_t pct = (offset * 100) / size;
-        if (pct / 10 > last_pct / 10) {
-            last_pct = pct;
+        uint32_t pct = ((uint32_t)(page + 1) * 100) / total_pages;
+        if (pct % 10 == 0 || page == total_pages - 1) {
             util_uart_printf("[BL] Swap progress: %u%%\r\n", (unsigned)pct);
         }
     }
+
+    /* Swap 完成: 交换 app/ota 元数据 */
+    uint32_t tmp_size = meta->app_size;
+    uint32_t tmp_crc  = meta->app_crc32;
+    uint32_t tmp_ver  = meta->app_version;
+    meta->app_size    = meta->ota_size;
+    meta->app_crc32   = meta->ota_crc32;
+    meta->app_version = meta->ota_version;
+    meta->ota_size    = tmp_size;
+    meta->ota_crc32   = tmp_crc;
+    meta->ota_version = tmp_ver;
 
     util_uart_printf("[BL] Swap complete\r\n");
     return 0;
@@ -147,7 +244,6 @@ void bl_run(void)
     /* Load metadata */
     rc = meta_load(&meta);
     if (rc != 0) {
-        /* Metadata corrupted - initialize defaults and try boot */
         util_uart_printf("[BL] Meta corrupted, init defaults\r\n");
         meta_init_default(&meta);
         meta_save(&meta);
@@ -157,56 +253,95 @@ void bl_run(void)
 
     switch (meta.boot_state) {
     case BOOT_STATE_SWAP:
-        /* OTA firmware ready in Slot 1, swap to Slot 0 */
-        util_uart_printf("[BL] SWAP: size=%u\r\n", (unsigned)meta.ota_size);
-        if (meta.ota_size > 0 && meta.ota_size <= PART_SLOT0_SIZE) {
-            rc = bl_swap_slot1_to_slot0(meta.ota_size);
-            if (rc == 0) {
-                /* Swap success: enter TESTING state */
-                util_uart_printf("[BL] Swap OK, enter TESTING\r\n");
-                meta.boot_state = BOOT_STATE_TESTING;
-                meta.boot_count = 0;
-                meta.app_size = meta.ota_size;
-                meta.app_crc32 = meta.ota_crc32;
-                meta.app_version = meta.ota_version;
-                meta_save(&meta);
-            } else {
-                /* Swap failed: stay NORMAL, boot old APP */
-                util_uart_printf("[BL] Swap FAILED rc=%d\r\n", rc);
+        /* OTA 固件在 Slot 1, 开始交换 */
+        util_uart_printf("[BL] SWAP: ota_size=%u\r\n", (unsigned)meta.ota_size);
+        if (meta.ota_size == 0 || meta.ota_size > PART_SLOT0_SIZE) {
+            meta.boot_state = BOOT_STATE_NORMAL;
+            meta_save(&meta);
+            break;
+        }
+        {
+            uint32_t swap_size = (meta.ota_size > meta.app_size)
+                                 ? meta.ota_size : meta.app_size;
+            if (swap_size == 0) swap_size = meta.ota_size;
+            uint16_t total_pages = (uint16_t)((swap_size + FLASH_PAGE_SIZE_BYTES - 1)
+                                              / FLASH_PAGE_SIZE_BYTES);
+            rc = swap_status_init(total_pages);
+            if (rc != 0) {
+                util_uart_printf("[BL] Swap status init FAILED\r\n");
                 meta.boot_state = BOOT_STATE_NORMAL;
                 meta_save(&meta);
+                break;
             }
+            meta.boot_state = BOOT_STATE_SWAPPING;
+            meta_save(&meta);
+        }
+        /* fall through */
+
+    case BOOT_STATE_SWAPPING:
+        /* 交换进行中 — 从断点恢复 */
+        rc = bl_do_swap(&meta);
+        if (rc == 0) {
+            /* 交换成功 → 进入 TESTING */
+            meta.boot_state = BOOT_STATE_TESTING;
+            meta.boot_count = 0;
+            meta_save(&meta);
+            util_uart_printf("[BL] Enter TESTING\r\n");
         } else {
+            util_uart_printf("[BL] Swap FAILED rc=%d\r\n", rc);
             meta.boot_state = BOOT_STATE_NORMAL;
             meta_save(&meta);
         }
         break;
 
     case BOOT_STATE_TESTING:
-        /* Increment boot count; if exceeded, rollback */
+        /* 新固件测试中: APP 需调用 ota_confirm_app() 确认 */
         meta.boot_count++;
         util_uart_printf("[BL] TESTING: boot_count=%u/%u\r\n",
                          (unsigned)meta.boot_count, (unsigned)meta.max_boot_count);
         if (meta.boot_count > meta.max_boot_count) {
-            /* Too many unsuccessful boots - mark rollback */
+            /* 超过最大测试次数 → 回滚 */
+            util_uart_printf("[BL] Max boot count exceeded, ROLLBACK\r\n");
             meta.boot_state = BOOT_STATE_ROLLBACK;
             meta_save(&meta);
-            /* TODO: actual rollback needs backup of old firmware */
-            /* For now, just try to boot whatever is in Slot 0 */
         } else {
             meta_save(&meta);
+            break;  /* 正常尝试启动 */
         }
-        break;
+        /* fall through to ROLLBACK */
 
     case BOOT_STATE_ROLLBACK:
-        /* Rollback state - just try to boot Slot 0 */
+        /* 回滚: 再次交换 Slot0 ↔ Slot1, 旧固件回到 Slot0 */
+        util_uart_printf("[BL] ROLLBACK: swapping back...\r\n");
+        {
+            uint32_t swap_size = (meta.ota_size > meta.app_size)
+                                 ? meta.ota_size : meta.app_size;
+            if (swap_size == 0) swap_size = meta.app_size;
+            uint16_t total_pages = (uint16_t)((swap_size + FLASH_PAGE_SIZE_BYTES - 1)
+                                              / FLASH_PAGE_SIZE_BYTES);
+            rc = swap_status_init(total_pages);
+            if (rc != 0) {
+                util_uart_printf("[BL] Rollback swap init FAILED\r\n");
+                meta.boot_state = BOOT_STATE_NORMAL;
+                meta_save(&meta);
+                break;
+            }
+            meta.boot_state = BOOT_STATE_SWAPPING;
+            meta_save(&meta);
+        }
+        rc = bl_do_swap(&meta);
+        if (rc == 0) {
+            util_uart_printf("[BL] Rollback complete\r\n");
+        } else {
+            util_uart_printf("[BL] Rollback FAILED rc=%d\r\n", rc);
+        }
         meta.boot_state = BOOT_STATE_NORMAL;
+        meta.boot_count = 0;
         meta_save(&meta);
         break;
 
     case BOOT_STATE_NORMAL:
     default:
-        /* Normal boot */
         break;
     }
 

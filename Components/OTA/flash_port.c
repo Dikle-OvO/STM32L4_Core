@@ -118,6 +118,12 @@ static const struct flash_partition g_part_meta = {
     .size   = PART_META_SIZE,
 };
 
+static const struct flash_partition g_part_swap_status = {
+    .flash  = &g_internal_flash,
+    .offset = PART_SWAP_STATUS_OFFSET,
+    .size   = PART_SWAP_STATUS_SIZE,
+};
+
 /* ============================================================================
  * Parameter Validation Helpers
  * ========================================================================= */
@@ -226,6 +232,11 @@ const struct flash_partition *flash_get_partition_slot1(void)
 const struct flash_partition *flash_get_partition_meta(void)
 {
     return &g_part_meta;
+}
+
+const struct flash_partition *flash_get_partition_swap_status(void)
+{
+    return &g_part_swap_status;
 }
 
 const struct flash_device *flash_get_device(void)
